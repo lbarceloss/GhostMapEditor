@@ -4,7 +4,7 @@ Editor 3D de **posições de objetos** dos mapas (`.gbin`) do PangYa.
 
 Não é um criador de mapas do zero: você abre um hole que já existe, voa dentro
 dele em primeira pessoa, escolhe um `.pet` do catálogo e **planta, move, gira,
-escala e apaga** objetos. O terreno não é tocado — e nem a jogabilidade
+escala e apaga** objetos. O terreno não é tocado e nem a jogabilidade
 (tee, pino, waypoints da IA e câmeras ficam intactos de propósito).
 
 ![Ghost Map Editor](docs/tela.png)
