@@ -24,6 +24,41 @@ GhostMapEditor.exe
 O log da última geração fica em `bin\ultimo_gerar.log` — é o primeiro lugar pra
 olhar quando o botão `GERAR .gbin` reclamar.
 
+## A lista de mapas e holes
+
+Os mapas do PangYa são estáticos — um punhado de rounds, 18 holes cada — então
+não faz sentido caçar arquivo numa caixa de diálogo. A `Biblioteca` varre as
+raízes de asset uma vez procurando `.gbin` e agrupa por pasta de round:
+
+* o `.gbin` mora em `<round>\map\`, `<round>\rank\` ou solto na pasta do round —
+  quem resolve isso é `PastaDoMapa()`;
+* o nome que aparece na tela sai de `NomeBonito()`: `round10_spring wind` vira
+  `Spring Wind`;
+* o número do hole é o número no fim do nome do arquivo. **Quem não tem número
+  (o `<mapa>_rank.gbin`) aparece como `EXTRA`, no fim da grade** — senão o rank
+  ficaria na frente do hole 1;
+* na hora de juntar, o critério de desempate é o **mesmo do `AssetDB`**: caminho
+  mais curto ganha. Sem isso, duas raízes que se sobrepõem duplicariam o hole.
+
+O índice é montado uma vez e fica em memória; o botão `reindexar` refaz, e
+arrastar uma pasta pra janela invalida o cache sozinho.
+
+🩸 **Trocar de hole só acontece depois do `EndDrawing()`.** O clique na grade só
+guarda o caminho em `abrirDepois`; quem chama o `abrir()` é o fim do quadro. É
+que o `abrir()` descarrega texturas e modelos — fazer isso no meio do desenho é
+pedir crash.
+
+### Pacote de mapas
+
+Uma pasta chamada `mapas` (ou `data`, ou `texture_dds`) **ao lado do exe** entra
+sozinha como raiz de asset, antes de qualquer coisa do `editor.cfg`. É o que faz
+o programa funcionar recém-baixado: descompactou o pacote ali, abriu, escolheu.
+Quem monta esse pacote a partir da instalação do próprio usuário é o
+`tools/montar_pacote.py`.
+
+O `editor.cfg` também é procurado ao lado do exe quando não está no diretório
+atual — é o caso de quem clica no exe direto pelo Explorer.
+
 ## Preservação da matriz original
 
 Elementos da Ntreev têm inclinação e escala não uniforme. O editor **nunca
@@ -102,6 +137,8 @@ bin\GhostMapEditor.exe hole.gbin --shot tela.png --cam x,y,z --look x,y,z --busc
 | `--buscar <texto>` | filtra o catálogo |
 | `--plantar <n>` | entra no modo plantar com o n-ésimo modelo da lista filtrada |
 | `--auto <projeto.json>` | planta 3, apaga um original, move outro, grava o projeto **e dispara o botão GERAR** |
+| `--mapas` | abre a lista de mapas e holes (com `--buscar`, já filtrada) |
+| `--escolher M,H` | escolhe o mapa M e abre o hole H — `H = -1` só seleciona o mapa |
 
 `--auto` exige `--plantar`, porque ele precisa estar no modo plantar com o ghost
 sobre o terreno. E ele chama **a mesma função** que o clique chama — se fosse

@@ -17,20 +17,59 @@ GhostMapEditor.exe  →  projetos\<hole>_edicao.json  →  tools\aplicar.py  →
 
 ## Rodar
 
-Baixe/clone o repositório e execute:
-
 ```bash
 bin\ABRIR_EDITOR.bat
 ```
 
-Ou direto no exe, já abrindo um hole:
+Abre direto na lista de **mapa → hole** (tecla **TAB** abre e fecha a qualquer
+momento). Clique no mapa da esquerda, clique no hole, e ele carrega.
+
+![escolher mapa e hole](docs/mapas.png)
+
+Os mapas do PangYa são estáticos, então essa lista é montada varrendo as pastas
+de asset uma vez — veja **[Pacote de mapas](#pacote-de-mapas)** logo abaixo.
+
+Também dá pra abrir um hole específico pela linha de comando:
 
 ```bash
 bin\GhostMapEditor.exe "C:\PangYa\data\round10_spring wind\map\pink_01.gbin"
 ```
 
-Também dá pra **arrastar** o `.gbin` pra janela. Arrastar uma **pasta** adiciona
-ela ao índice de assets na hora (útil quando falta um modelo ou uma textura).
+…ou **arrastar** o `.gbin` pra janela. Arrastar uma **pasta** soma ela ao índice
+na hora (útil quando falta um modelo ou uma textura).
+
+---
+
+## Pacote de mapas
+
+Pra não ter que configurar nada, junte os mapas e as texturas do **seu** cliente
+numa pasta só chamada `mapas`, ao lado do `GhostMapEditor.exe`. O editor detecta
+sozinho e a lista já vem cheia — sem editar o `editor.cfg`.
+
+```bash
+python bin\tools\montar_pacote.py --mapas "C:\PangYa\data" --texturas "C:\PangYa\gui\data\texture_dds"
+```
+
+O script copia só o que o editor abre (`.gbin`, `.pet` e texturas), preservando
+a estrutura de pastas:
+
+```
+bin\
+ ├─ GhostMapEditor.exe
+ └─ mapas\
+     ├─ round01_wind\map\wind_01.gbin ...
+     ├─ round10_spring wind\...
+     └─ texture_dds\
+```
+
+Opções úteis: `--simular` mostra o tamanho antes de escrever, `--modo link` usa
+hardlink em vez de copiar (instantâneo e não ocupa disco, mesmo volume só).
+
+> ⚠️ **Esse pacote não vem no repositório e não deve ser publicado.** Os mapas,
+> modelos e texturas são conteúdo do cliente do PangYa (Ntreev Soft / NCSOFT);
+> redistribuí-los não é coisa que eu possa ajudar a fazer. O que se distribui é
+> o **programa e o script** — cada um monta o pacote a partir da instalação que
+> já tem. O `.gitignore` bloqueia `bin/mapas/` pra isso não subir sem querer.
 
 ### O que você precisa ter
 
@@ -38,7 +77,7 @@ ela ao índice de assets na hora (útil quando falta um modelo ou uma textura).
 |---|---|
 | **Windows 64-bit** | o exe já vem compilado em `bin\` |
 | **Visual C++ Redistributable 2015-2022 (x64)** | se o exe não abrir, é isso que falta — [baixar](https://aka.ms/vs/17/release/vc_redist.x64.exe) |
-| **Os mapas extraídos do PangYa** | as pastas `round*` do `.pak`. **Não vêm neste repositório** |
+| **Os mapas extraídos do PangYa** | as pastas `round*` do `.pak`. **Não vêm neste repositório** — veja [Pacote de mapas](#pacote-de-mapas) |
 | **Python 3 com `numpy`** no PATH | só pro botão `GERAR .gbin`. Sem ele o editor abre e edita normal, mas não escreve o mapa |
 | **[pet-source_tools](https://github.com/Acrisio-Filho/pet-source_tools)** | é quem escreve o `.gbin`. Veja abaixo |
 
@@ -53,10 +92,11 @@ redistribuído aqui**. Baixe uma cópia e escolha uma destas formas:
 
 ### `editor.cfg`
 
-Fica em `bin\editor.cfg` e é lido **sem recompilar**. As pastas listadas ali são
-onde o editor procura `.pet` e textura — e são elas que formam o catálogo de
-objetos. Quanto mais mapas você listar, maior o catálogo (existem cerca de
-**780 `.pet` únicos** nos 15 rounds).
+Fica em `bin\editor.cfg` e é lido **sem recompilar**. Serve pra quem prefere
+apontar as pastas onde elas já estão, em vez de montar o pacote. As pastas
+listadas ali são onde o editor procura `.pet` e textura — e são elas que formam
+tanto a lista de mapas quanto o catálogo de objetos (existem cerca de **780
+`.pet` únicos** nos 15 rounds).
 
 ```ini
 gbin=C:\PangYa\data\round10_spring wind\map\pink_01.gbin
@@ -72,6 +112,7 @@ fov=70
 
 | | |
 |---|---|
+| **TAB** | lista de mapas e holes |
 | **botão direito segurado** | olhar em volta |
 | **W A S D** / Space / Alt | andar / subir / descer |
 | Shift | 3× mais rápido (e passo fino ao editar) |
@@ -111,8 +152,10 @@ GhostMapEditor/
 │   ├─ GhostMapEditor.exe
 │   ├─ editor.cfg            configuração, editável sem recompilar
 │   ├─ ABRIR_EDITOR.bat
+│   ├─ mapas/                (você monta) o pacote de mapas — nunca vai pro git
 │   └─ tools/
 │       ├─ aplicar.py        aplica o projeto e escreve o .gbin novo
+│       ├─ montar_pacote.py  junta mapas e texturas na pasta `mapas`
 │       └─ petpkg.py         carrega o pet-source_tools sem o Blender
 ├─ src/
 │   ├─ editor/               editor_main.cpp, app.rc, ícone

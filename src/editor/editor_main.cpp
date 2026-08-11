@@ -32,10 +32,12 @@
 #include <stdlib.h>
 #include <string.h>
 #include <math.h>
+#include <ctype.h>
 #include <string>
 #include <vector>
 #include <algorithm>
 #include <unordered_map>
+#include <filesystem>
 
 static const char* kTitulo = "Ghost Map Editor   |   by Ghost   |   www.hkfirewall.com";
 static const char* kCredito = "Ghost Map Editor   -   desenvolvido por Ghost   -   www.hkfirewall.com";
@@ -275,6 +277,174 @@ struct Catalogo {
 };
 
 // ===========================================================================
+//  BIBLIOTECA DE MAPAS  (escolher MAPA -> HOLE, sem caixa de dialogo)
+//
+//  Os mapas do PangYa sao estaticos: um punhado de rounds, 18 holes cada. Em
+//  vez de obrigar o usuario a cacar o arquivo no disco, varremos as raizes de
+//  asset uma vez procurando .gbin e agrupamos por pasta de round.
+// ===========================================================================
+struct HoleItem {
+    std::string caminho;
+    std::string arquivo;                // pink_01.gbin
+    int         numero = 0;             // 1..18 (0 = o nome nao termina em numero)
+};
+
+struct MapaItem {
+    std::string nome;                   // "Spring Wind"  (pro botao)
+    std::string pasta;                  // "round10_spring wind"
+    std::string caminho;                // pasta do round no disco
+    std::vector<HoleItem> holes;
+};
+
+// O .gbin mora em <round>\map\, <round>\rank\ ou solto na pasta do round.
+static std::string PastaDoMapa(const std::string& gbin) {
+    const std::string dir = PathDir(gbin);
+    const std::string base = ToLower(PathFileName(dir));
+    if (base == "map" || base == "rank" || base == "ase" || base == "aibin")
+        return PathDir(dir);
+    return dir;
+}
+
+// "round10_spring wind" -> "Spring Wind"
+static std::string NomeBonito(const std::string& pasta) {
+    std::string s = pasta;
+    if (s.size() > 6 && ToLower(s.substr(0, 5)) == "round") {
+        size_t i = 5;
+        while (i < s.size() && isdigit((unsigned char)s[i])) i++;
+        if (i > 5 && i < s.size() && (s[i] == '_' || s[i] == '-' || s[i] == ' '))
+            s = s.substr(i + 1);
+    }
+    bool comeco = true;
+    for (auto& c : s) {
+        if (comeco) c = (char)toupper((unsigned char)c);
+        comeco = !isalnum((unsigned char)c);
+    }
+    return s;
+}
+
+static int NumeroDoHole(const std::string& stem) {
+    int i = (int)stem.size();
+    const int fim = i;
+    while (i > 0 && isdigit((unsigned char)stem[i - 1])) i--;
+    return (i == fim) ? 0 : atoi(stem.c_str() + i);
+}
+
+struct Biblioteca {
+    std::vector<MapaItem> mapas;
+    std::string busca;
+    int  mapaSel = 0;
+    int  scrollMapa = 0, scrollHole = 0;
+    int  totalHoles = 0;
+    bool montada = false;
+
+    void Monta(const std::vector<std::string>& raizes) {
+        mapas.clear();
+        totalHoles = 0;
+        montada = true;
+
+        // Mesmo criterio do AssetDB: no empate de nome, o caminho MAIS CURTO
+        // ganha. Sem isso, raizes que se sobrepoem duplicariam o mesmo hole.
+        std::unordered_map<std::string, std::string> achados;
+        std::error_code ec;
+        for (const std::string& r : raizes) {
+            if (r.empty() || !std::filesystem::is_directory(r, ec)) continue;
+            std::filesystem::recursive_directory_iterator
+                it(r, std::filesystem::directory_options::skip_permission_denied, ec), fim;
+            for (; it != fim; it.increment(ec)) {
+                if (ec) { ec.clear(); continue; }
+                std::error_code e2;
+                if (!it->is_regular_file(e2)) continue;
+                std::string full;
+                try { full = it->path().string(); } catch (...) { continue; }
+                const std::string low = ToLower(full);
+                if (low.size() < 5 || low.compare(low.size() - 5, 5, ".gbin") != 0) continue;
+
+                const std::string chave = ToLower(PathFileName(PastaDoMapa(full)))
+                                        + "\\" + ToLower(PathFileName(full));
+                auto f = achados.find(chave);
+                if (f == achados.end())            achados[chave] = full;
+                else if (full.size() < f->second.size()) f->second = full;
+            }
+        }
+
+        std::unordered_map<std::string, int> idx;
+        for (const auto& kv : achados) {
+            const std::string& full = kv.second;
+            const std::string pasta = PastaDoMapa(full);
+            const std::string nome = PathFileName(pasta);
+            const std::string k = ToLower(nome);
+
+            int i;
+            auto f = idx.find(k);
+            if (f == idx.end()) {
+                i = (int)mapas.size();
+                idx[k] = i;
+                MapaItem m;
+                m.pasta = nome;
+                m.nome = NomeBonito(nome);
+                m.caminho = pasta;
+                mapas.push_back(m);
+            } else {
+                i = f->second;
+            }
+            HoleItem h;
+            h.caminho = full;
+            h.arquivo = PathFileName(full);
+            h.numero = NumeroDoHole(PathStem(full));
+            mapas[i].holes.push_back(h);
+            totalHoles++;
+        }
+
+        std::sort(mapas.begin(), mapas.end(), [](const MapaItem& a, const MapaItem& b) {
+            return ToLower(a.pasta) < ToLower(b.pasta);
+        });
+        // numero 0 e o que nao e hole (o <mapa>_rank.gbin, por exemplo): vai
+        // pro fim da grade em vez de ficar na frente do hole 1.
+        for (auto& m : mapas)
+            std::sort(m.holes.begin(), m.holes.end(), [](const HoleItem& a, const HoleItem& b) {
+                if ((a.numero == 0) != (b.numero == 0)) return b.numero == 0;
+                if (a.numero != b.numero) return a.numero < b.numero;
+                return ToLower(a.arquivo) < ToLower(b.arquivo);
+            });
+        if (mapaSel >= (int)mapas.size()) mapaSel = 0;
+    }
+
+    // Um mapa entra na lista se o nome dele bate, ou se algum hole dele bate.
+    bool Bate(const MapaItem& m) const {
+        if (busca.empty()) return true;
+        const std::string b = ToLower(busca);
+        if (ToLower(m.nome).find(b) != std::string::npos) return true;
+        if (ToLower(m.pasta).find(b) != std::string::npos) return true;
+        for (const auto& h : m.holes)
+            if (ToLower(h.arquivo).find(b) != std::string::npos) return true;
+        return false;
+    }
+    // Se a busca casou com o MAPA, todos os holes dele aparecem.
+    bool BateHole(const MapaItem& m, const HoleItem& h) const {
+        if (busca.empty()) return true;
+        const std::string b = ToLower(busca);
+        if (ToLower(m.nome).find(b) != std::string::npos ||
+            ToLower(m.pasta).find(b) != std::string::npos) return true;
+        return ToLower(h.arquivo).find(b) != std::string::npos;
+    }
+    std::vector<int> MapasFiltrados() const {
+        std::vector<int> r;
+        for (int i = 0; i < (int)mapas.size(); i++) if (Bate(mapas[i])) r.push_back(i);
+        return r;
+    }
+};
+
+static Rectangle RetBiblioteca(int sw, int sh) {
+    float w = (float)sw - 120.0f;
+    float h = (float)sh - 150.0f;
+    if (w > 1080.0f) w = 1080.0f;
+    if (h > 700.0f)  h = 700.0f;
+    if (w < 520.0f)  w = (float)sw - 20.0f;
+    if (h < 340.0f)  h = (float)sh - 20.0f;
+    return Rectangle{ (sw - w) * 0.5f, (sh - h) * 0.5f, w, h };
+}
+
+// ===========================================================================
 //  JSON (escrita a mao; o formato e simples e nao vale uma dependencia)
 // ===========================================================================
 static std::string EscapaJson(const std::string& s) {
@@ -414,6 +584,8 @@ int main(int argc, char** argv) {
     Vector3 shotCam = { 0,0,0 }, shotLook = { 0,0,0 };
     bool temShotCam = false, temShotLook = false;
     int  shotPlantar = -1;      // indice na lista filtrada do catalogo
+    bool shotMapas = false;
+    int  shotMapa = -1, shotHole = -1;
     for (int i = 1; i < argc; i++) {
         std::string a = argv[i];
         if      (a == "--shot" && i + 1 < argc) shotOut = argv[++i];
@@ -424,6 +596,11 @@ int main(int argc, char** argv) {
         // --auto: planta no cursor e grava o projeto. E o auto-teste do
         // caminho C++ -> .json -> aplicar.py -> .gbin, sem depender de clique.
         else if (a == "--auto" && i + 1 < argc)    shotAuto = argv[++i];
+        // --mapas abre a lista de mapas; --escolher M,H clica no hole H do
+        // mapa M, pela MESMA porta que o clique do mouse usa.
+        else if (a == "--mapas") shotMapas = true;
+        else if (a == "--escolher" && i + 1 < argc)
+            sscanf(argv[++i], "%d,%d", &shotMapa, &shotHole);
         else if (!a.empty() && a[0] != '-') cmdGbin = a;
     }
     const bool modoShot = !shotOut.empty();
@@ -435,6 +612,25 @@ int main(int argc, char** argv) {
     SetExitKey(KEY_NULL);
     SetTargetFPS(0);
     rlSetClipPlanes(1.0, 80000.0);
+
+    // ------------------------------------------------- pacote de mapas ------
+    // Se o editor.cfg nao veio do diretorio atual (o usuario clicou no exe de
+    // outro lugar), tenta o que esta ao lado do exe.
+    const std::string kDirApp = GetApplicationDirectory();
+    if (cfg.extraRoots.empty() && cfg.gbin.empty())
+        LoadConfig((kDirApp + "editor.cfg").c_str(), cfg);
+
+    // Uma pasta de mapas solta AO LADO DO EXE entra sozinha como raiz. E o que
+    // faz o programa funcionar recem-baixado: descompactou o pacote aqui, abriu
+    // e ja escolhe mapa e hole -- sem editar o editor.cfg.
+    for (const char* sub : { "mapas", "data", "texture_dds" }) {
+        const std::string p = kDirApp + sub;
+        if (DirectoryExists(p.c_str())) {
+            bool ja = false;
+            for (const auto& r : cfg.extraRoots) if (ToLower(r) == ToLower(p)) ja = true;
+            if (!ja) cfg.extraRoots.push_back(p);
+        }
+    }
 
     ViewShader vs;
     vs.Load();
@@ -460,6 +656,10 @@ int main(int argc, char** argv) {
     Vector3 ghost = { 0,0,0 };
     float  novoGiro = 0.0f, novaEscala = 1.0f, alturaExtra = 0.0f;
     bool   comoPortal = false;
+
+    Biblioteca bib;
+    bool mostraBiblioteca = false;
+    std::string abrirDepois;    // hole clicado na lista; a troca e no fim do quadro
 
     bool mostraCatalogo = true;
     bool mostraAjuda = false;
@@ -546,10 +746,31 @@ int main(int argc, char** argv) {
     if (!cmdGbin.empty())      abrir(cmdGbin);
     else if (!cfg.gbin.empty()) abrir(cfg.gbin);
 
+    // ---------------------------------------------------- biblioteca --------
+    // O que a biblioteca varre: as raizes do editor.cfg / do pacote, mais as
+    // que a cena indexou (a pasta do hole aberto e o que foi arrastado).
+    auto raizesBib = [&]() {
+        std::vector<std::string> r = cfg.extraRoots;
+        if (scene.loaded)
+            for (const auto& s : scene.db.Roots()) r.push_back(s);
+        return r;
+    };
+    auto abreBiblioteca = [&]() {
+        if (!bib.montada) bib.Monta(raizesBib());
+        mostraBiblioteca = true;
+        campoAtivo = 0;
+    };
+
+    // Sem hole carregado a tela seria so o vazio -- entao ja abre na lista.
+    if ((!scene.loaded && !modoShot) || shotMapas) abreBiblioteca();
+
     if (modoShot) {
         if (temShotCam)  cam.pos = shotCam;
         if (temShotLook) cam.LookAt(shotLook);
-        if (!shotBusca.empty()) cat.busca = shotBusca;
+        if (!shotBusca.empty()) {
+            cat.busca = shotBusca;
+            if (shotMapas) bib.busca = shotBusca;   // com --mapas, busca na lista
+        }
         if (shotPlantar >= 0) {
             std::vector<int> vis = cat.Filtrados();
             if (shotPlantar < (int)vis.size()) {
@@ -567,8 +788,11 @@ int main(int argc, char** argv) {
         const bool  shift = IsKeyDown(KEY_LEFT_SHIFT) || IsKeyDown(KEY_RIGHT_SHIFT);
 
         const Rectangle rCat = { (float)sw - 400.0f - 10.0f, 96.0f, 400.0f, (float)sh - 96.0f - 150.0f };
+        const Rectangle rBib = RetBiblioteca(sw, sh);
         if (modoShot) SetMousePosition(sw / 2, sh / 2 + 140);   // mira no chao
-        const bool mouseNaUi = mostraCatalogo && CheckCollisionPointRec(GetMousePosition(), rCat);
+        const bool mouseNaUi =
+            (mostraCatalogo   && CheckCollisionPointRec(GetMousePosition(), rCat)) ||
+            (mostraBiblioteca && CheckCollisionPointRec(GetMousePosition(), rBib));
 
         // ---------------------------------------------------------- camera --
         if (IsMouseButtonDown(MOUSE_BUTTON_RIGHT)) {
@@ -614,6 +838,10 @@ int main(int argc, char** argv) {
 
         // ------------------------------------------------------- atalhos ----
         if (!editandoTexto) {
+            if (IsKeyPressed(KEY_TAB)) {
+                if (mostraBiblioteca) mostraBiblioteca = false;
+                else                  abreBiblioteca();
+            }
             if (ctrl && IsKeyPressed(KEY_O)) {
                 std::string p = OpenFileDialog("Abrir hole (.gbin)",
                     "Mapa do PangYa (*.gbin)\0*.gbin\0Todos (*.*)\0*.*\0\0",
@@ -642,7 +870,8 @@ int main(int argc, char** argv) {
                       : "modo navegar");
             }
             if (IsKeyPressed(KEY_ESCAPE)) {
-                if (modo != Modo::Navegar) { modo = Modo::Navegar; plantando = -1; }
+                if (mostraBiblioteca && scene.loaded) mostraBiblioteca = false;
+                else if (modo != Modo::Navegar) { modo = Modo::Navegar; plantando = -1; }
                 else { sel = selCaixa = -1; }
                 arrastando = false;
             }
@@ -976,7 +1205,13 @@ int main(int argc, char** argv) {
                 std::string p = fl.paths[0];
                 if (ToLower(p).size() > 5 && ToLower(p).substr(ToLower(p).size() - 5) == ".gbin")
                     abrir(p);
-                else { scene.db.AddRoot(p); cat.Monta(scene.db, scene.gbin); aviso("pasta indexada: " + p); }
+                else {
+                    scene.db.AddRoot(p);
+                    cat.Monta(scene.db, scene.gbin);
+                    cfg.extraRoots.push_back(p);
+                    bib.montada = false;          // a lista de mapas reindexa sozinha
+                    aviso("pasta indexada: " + p);
+                }
             }
             UnloadDroppedFiles(fl);
         }
@@ -1189,12 +1424,180 @@ int main(int argc, char** argv) {
             }
         }
 
+        // ============================= BIBLIOTECA ===========================
+        if (mostraBiblioteca) {
+            if (!bib.montada) bib.Monta(raizesBib());
+
+            DrawRectangle(0, 0, sw, sh, Color{ 0, 0, 0, 130 });
+            Painel(rBib, "escolher mapa e hole   (TAB abre e fecha)");
+
+            const int x0 = (int)rBib.x + 12;
+            int y = (int)rBib.y + 36;
+            const bool clique = IsMouseButtonPressed(MOUSE_BUTTON_LEFT);
+
+            // ---- busca, contador e botoes do topo
+            Rectangle rb = { (float)x0, (float)y, 300, 28 };
+            bool ativoBusca = (campoAtivo == 4);
+            if (CheckCollisionPointRec(GetMousePosition(), rb) && clique) {
+                campoAtivo = 4; ativoBusca = true;
+            }
+            if (CampoTexto(rb, bib.busca, ativoBusca, "buscar mapa ou hole...")) {
+                bib.scrollMapa = 0; bib.scrollHole = 0;
+            }
+            if (ativoBusca) travaTexto = true;
+            {
+                char b[96];
+                snprintf(b, sizeof(b), "%d mapas   %d holes",
+                         (int)bib.mapas.size(), bib.totalHoles);
+                DrawText(b, x0 + 312, y + 8, 14, Color{ 138, 158, 184, 255 });
+            }
+            Rectangle rFechar = { rBib.x + rBib.width - 12 - 84, (float)y, 84, 28 };
+            if (UiButton(rFechar, "fechar", false, clique)) mostraBiblioteca = false;
+            Rectangle rReindex = { rFechar.x - 6 - 92, (float)y, 92, 28 };
+            if (UiButton(rReindex, "reindexar", false, clique)) {
+                bib.Monta(raizesBib());
+                aviso("reindexado: " + std::to_string(bib.totalHoles) + " holes");
+            }
+            y += 36;
+
+            const float altLista = rBib.y + rBib.height - y - 32;
+            const Rectangle rMapas = { (float)x0, (float)y, 280, altLista };
+            const Rectangle rHoles = { rMapas.x + rMapas.width + 12, (float)y,
+                                       rBib.width - rMapas.width - 12 - 24, altLista };
+
+            std::vector<int> vis = bib.MapasFiltrados();
+            // se o filtro escondeu o mapa selecionado, pula pro primeiro visivel
+            if (!vis.empty()) {
+                bool aparece = false;
+                for (int i : vis) if (i == bib.mapaSel) aparece = true;
+                if (!aparece) { bib.mapaSel = vis[0]; bib.scrollHole = 0; }
+            }
+
+            // ---- coluna dos mapas
+            DrawRectangleRec(rMapas, Color{ 12, 14, 19, 200 });
+            BeginScissorMode((int)rMapas.x, (int)rMapas.y, (int)rMapas.width, (int)rMapas.height);
+            {
+                const int alt = 44;
+                if (CheckCollisionPointRec(GetMousePosition(), rMapas)) {
+                    float w = GetMouseWheelMove();
+                    if (w != 0) bib.scrollMapa -= (int)w * 3;
+                }
+                int maxS = (int)vis.size() - (int)(rMapas.height / alt);
+                if (maxS < 0) maxS = 0;
+                if (bib.scrollMapa > maxS) bib.scrollMapa = maxS;
+                if (bib.scrollMapa < 0)    bib.scrollMapa = 0;
+
+                const int cabem = (int)(rMapas.height / alt) + 1;
+                for (int k = 0; k < cabem; k++) {
+                    const int idx = bib.scrollMapa + k;
+                    if (idx < 0 || idx >= (int)vis.size()) continue;
+                    const MapaItem& m = bib.mapas[vis[idx]];
+                    Rectangle ri = { rMapas.x, rMapas.y + k * (float)alt, rMapas.width, (float)alt - 2 };
+                    const bool hover = CheckCollisionPointRec(GetMousePosition(), ri) &&
+                                       CheckCollisionPointRec(GetMousePosition(), rMapas);
+                    const bool escolhido = (vis[idx] == bib.mapaSel);
+                    DrawRectangleRec(ri, escolhido ? Color{ 34, 74, 108, 240 }
+                                       : hover ? Color{ 40, 48, 62, 235 } : Color{ 20, 24, 32, 180 });
+                    DrawText(m.nome.c_str(), (int)ri.x + 10, (int)ri.y + 6, 16,
+                               escolhido ? RAYWHITE : Color{ 208, 222, 240, 255 });
+                    int nHoles = 0;
+                    for (const auto& h : m.holes) if (h.numero > 0) nHoles++;
+                    const int nExtra = (int)m.holes.size() - nHoles;
+                    const char* plural = (nHoles == 1) ? "hole" : "holes";
+                    char b[160];
+                    if (nExtra > 0)
+                        snprintf(b, sizeof(b), "%d %s  +%d extra   -   %s",
+                                 nHoles, plural, nExtra, m.pasta.c_str());
+                    else
+                        snprintf(b, sizeof(b), "%d %s   -   %s", nHoles, plural, m.pasta.c_str());
+                    DrawText(b, (int)ri.x + 10, (int)ri.y + 25, 12, Color{ 125, 148, 176, 255 });
+                    if (hover && clique) { bib.mapaSel = vis[idx]; bib.scrollHole = 0; }
+                }
+            }
+            EndScissorMode();
+            DrawRectangleLinesEx(rMapas, 1, Color{ 55, 66, 84, 255 });
+
+            // ---- grade dos holes do mapa escolhido
+            DrawRectangleRec(rHoles, Color{ 12, 14, 19, 200 });
+            BeginScissorMode((int)rHoles.x, (int)rHoles.y, (int)rHoles.width, (int)rHoles.height);
+            if (!bib.mapas.empty() && bib.mapaSel < (int)bib.mapas.size()) {
+                const MapaItem& m = bib.mapas[bib.mapaSel];
+                std::vector<int> hv;
+                for (int i = 0; i < (int)m.holes.size(); i++)
+                    if (bib.BateHole(m, m.holes[i])) hv.push_back(i);
+
+                const float bw = 132, bh = 52, gap = 8;
+                int cols = (int)((rHoles.width - 12 + gap) / (bw + gap));
+                if (cols < 1) cols = 1;
+                const int linhas = ((int)hv.size() + cols - 1) / cols;
+                const int linhasCabem = (int)((rHoles.height - 12) / (bh + gap));
+                if (CheckCollisionPointRec(GetMousePosition(), rHoles)) {
+                    float w = GetMouseWheelMove();
+                    if (w != 0) bib.scrollHole -= (int)w * 2;
+                }
+                int maxS = linhas - linhasCabem;
+                if (maxS < 0) maxS = 0;
+                if (bib.scrollHole > maxS) bib.scrollHole = maxS;
+                if (bib.scrollHole < 0)    bib.scrollHole = 0;
+
+                for (int i = 0; i < (int)hv.size(); i++) {
+                    const int c = i % cols;
+                    const int l = i / cols - bib.scrollHole;
+                    if (l < -1 || l > linhasCabem + 1) continue;
+                    const HoleItem& h = m.holes[hv[i]];
+                    Rectangle r = { rHoles.x + 6 + c * (bw + gap),
+                                    rHoles.y + 6 + l * (bh + gap), bw, bh };
+                    const bool atual = scene.loaded &&
+                                       ToLower(h.caminho) == ToLower(scene.gbinPath);
+                    const bool hover = CheckCollisionPointRec(GetMousePosition(), r) &&
+                                       CheckCollisionPointRec(GetMousePosition(), rHoles);
+                    DrawRectangleRec(r, atual ? Color{ 34, 88, 58, 240 }
+                                      : hover ? Color{ 44, 54, 70, 240 } : Color{ 22, 26, 34, 220 });
+                    DrawRectangleLinesEx(r, 1, hover ? Color{ 110, 150, 200, 255 }
+                                                     : Color{ 50, 60, 76, 255 });
+                    char b[32];
+                    if (h.numero > 0) snprintf(b, sizeof(b), "HOLE %02d", h.numero);
+                    else              snprintf(b, sizeof(b), "EXTRA");   // rank, etc
+                    DrawText(b, (int)r.x + 10, (int)r.y + 7, 18,
+                             atual ? RAYWHITE : Color{ 214, 228, 244, 255 });
+                    DrawText(h.arquivo.c_str(), (int)r.x + 10, (int)r.y + 31, 12,
+                               Color{ 126, 150, 180, 255 });
+                    if (hover && clique) abrirDepois = h.caminho;
+                }
+                if (hv.empty())
+                    DrawText("nenhum hole com esse nome", (int)rHoles.x + 14,
+                             (int)rHoles.y + 14, 15, Color{ 150, 168, 190, 255 });
+            }
+            EndScissorMode();
+            DrawRectangleLinesEx(rHoles, 1, Color{ 55, 66, 84, 255 });
+
+            // ---- nada indexado: explica o que fazer
+            if (bib.mapas.empty()) {
+                const char* l1 = "nenhum .gbin encontrado nas pastas indexadas";
+                const char* l2 = "ponha a pasta 'mapas' ao lado do GhostMapEditor.exe,";
+                const char* l3 = "ou arraste a pasta dos mapas pra esta janela";
+                const int cx = (int)(rHoles.x + rHoles.width * 0.5f);
+                const int cy = (int)(rHoles.y + rHoles.height * 0.5f);
+                DrawText(l1, cx - MeasureText(l1, 17) / 2, cy - 34, 17, Color{ 235, 205, 130, 255 });
+                DrawText(l2, cx - MeasureText(l2, 14) / 2, cy + 2, 14, Color{ 165, 182, 205, 255 });
+                DrawText(l3, cx - MeasureText(l3, 14) / 2, cy + 22, 14, Color{ 165, 182, 205, 255 });
+            }
+
+            DrawText("clique no mapa, depois no hole   |   arraste uma pasta pra somar ao indice",
+                     x0, (int)(rBib.y + rBib.height) - 22, 12, Color{ 118, 136, 160, 255 });
+        }
+
         // =============================== BOTOES =============================
         {
             const float bw = 128, bh = 30;
-            float bx = (float)sw - bw - 12, by = (float)sh - 130;
+            float bx = (float)sw - bw - 12, by = (float)sh - 172;
             const bool clique = IsMouseButtonPressed(MOUSE_BUTTON_LEFT);
 
+            if (UiButton(Rectangle{ bx, by, bw, bh }, "Mapas e holes", mostraBiblioteca, clique)) {
+                if (mostraBiblioteca) mostraBiblioteca = false;
+                else                  abreBiblioteca();
+            }
+            by += bh + 6;
             if (UiButton(Rectangle{ bx, by, bw, bh }, "Abrir hole", false, clique)) {
                 std::string p = OpenFileDialog("Abrir hole (.gbin)",
                     "Mapa do PangYa (*.gbin)\0*.gbin\0Todos (*.*)\0*.*\0\0",
@@ -1308,8 +1711,22 @@ int main(int argc, char** argv) {
 
         EndDrawing();
 
+        // Trocar de hole so DEPOIS do EndDrawing: o abrir() descarrega texturas
+        // e modelos, e fazer isso no meio do desenho do quadro e pedir crash.
+        if (!abrirDepois.empty()) {
+            if (abrir(abrirDepois)) mostraBiblioteca = false;
+            abrirDepois.clear();
+        }
+
         if (modoShot) {
             quadrosShot++;
+            // auto-teste da biblioteca: escolhe mapa e hole sem clicar
+            if (quadrosShot == 12 && shotMapa >= 0 && shotMapa < (int)bib.mapas.size()) {
+                bib.mapaSel = shotMapa;
+                const MapaItem& m = bib.mapas[shotMapa];
+                if (shotHole >= 0 && shotHole < (int)m.holes.size())
+                    abrirDepois = m.holes[shotHole].caminho;
+            }
             // no meio do caminho, o auto-teste: planta 3 objetos com giros
             // diferentes, apaga um original, move outro e grava o projeto.
             if (!shotAuto.empty() && quadrosShot == 20 &&

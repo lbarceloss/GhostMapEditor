@@ -14,6 +14,13 @@ bin/saida/
 bin/ultimo_gerar.log
 bin/*.png
 
+# O PACOTE DE MAPAS NAO ENTRA NO REPOSITORIO.
+# Sao arquivos do cliente do PangYa (Ntreev Soft / NCSOFT); cada um monta o
+# seu com tools/montar_pacote.py a partir da propria instalacao.
+bin/mapas/
+bin/data/
+bin/texture_dds/
+
 # python
 __pycache__/
 *.pyc
