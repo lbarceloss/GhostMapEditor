@@ -1,16 +1,13 @@
 * text=auto
-
 # arquivos que o Windows precisa ler com CRLF
 *.bat   text eol=crlf
 *.cfg   text eol=crlf
 *.rc    text eol=crlf
-
 *.cpp   text
 *.h     text
 *.py    text
 *.md    text
 *.yml   text
-
 # binarios: git nao mexe
 *.exe   binary
 *.dll   binary
@@ -19,3 +16,4 @@
 *.png   binary
 *.res   binary
 *.obj   binary
+bin/mapas.zip filter=lfs diff=lfs merge=lfs -text
