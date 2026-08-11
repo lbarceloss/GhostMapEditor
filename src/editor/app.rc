@@ -1,0 +1,36 @@
+#include <windows.h>
+
+// GLFW_ICON e o nome que o GLFW procura pra por o icone na JANELA;
+// a entrada numerica 1 e a que o Explorer usa no arquivo.
+GLFW_ICON  ICON  "GhostPro.ico"
+1          ICON  "GhostPro.ico"
+
+VS_VERSION_INFO VERSIONINFO
+FILEVERSION     1,0,0,0
+PRODUCTVERSION  1,0,0,0
+FILEFLAGSMASK   VS_FFI_FILEFLAGSMASK
+FILEFLAGS       0x0L
+FILEOS          VOS_NT_WINDOWS32
+FILETYPE        VFT_APP
+FILESUBTYPE     VFT2_UNKNOWN
+BEGIN
+    BLOCK "StringFileInfo"
+    BEGIN
+        BLOCK "040904B0"
+        BEGIN
+            VALUE "CompanyName",      "Ghost - www.hkfirewall.com"
+            VALUE "FileDescription",  "Ghost Map Editor"
+            VALUE "FileVersion",      "1.0.0.0"
+            VALUE "InternalName",     "GhostMapEditor"
+            VALUE "LegalCopyright",   "Desenvolvido por Ghost - www.hkfirewall.com"
+            VALUE "OriginalFilename", "GhostMapEditor.exe"
+            VALUE "ProductName",      "Ghost Map Editor"
+            VALUE "ProductVersion",   "1.0.0.0"
+            VALUE "Comments",         "Ghost Map Editor - editor de posicoes de objetos do .gbin - www.hkfirewall.com"
+        END
+    END
+    BLOCK "VarFileInfo"
+    BEGIN
+        VALUE "Translation", 0x409, 1200
+    END
+END

@@ -1,0 +1,30 @@
+name: build
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: build.bat
+        shell: cmd
+        run: build.bat
+
+      - name: confere que o exe saiu
+        shell: cmd
+        run: dir bin\GhostMapEditor.exe
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: GhostMapEditor
+          path: |
+            bin/GhostMapEditor.exe
+            bin/editor.cfg
+            bin/ABRIR_EDITOR.bat
+            bin/tools/

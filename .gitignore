@@ -1,0 +1,30 @@
+# saida de build
+build/
+*.obj
+*.res
+*.pdb
+*.ilk
+*.exp
+*.lib
+!third_party/**/*.lib
+
+# gerado em tempo de execucao pelo editor
+bin/projetos/
+bin/saida/
+bin/ultimo_gerar.log
+bin/*.png
+
+# python
+__pycache__/
+*.pyc
+
+# assets do jogo NAO entram no repositorio
+*.gbin
+*.sbin
+*.pet
+*.dds
+*.pak
+
+# lixo do windows
+Thumbs.db
+desktop.ini
