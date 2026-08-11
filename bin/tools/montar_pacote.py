@@ -27,7 +27,9 @@ import shutil
 import sys
 
 # So o que o editor abre. O resto do cliente (som, ui, video) nao serve de nada
-# aqui e so faria o pacote engordar.
+# aqui e so faria o pacote engordar. Com --tudo, nada e filtrado: vem tambem o
+# .sbin (terreno/colisao, o grosso do peso), o _property.xml (tee, pino e as
+# classes de booster) e o .wep (o projeto do editor da Ntreev).
 EXTENSOES = {".gbin", ".pet", ".dds", ".jpg", ".jpeg", ".png", ".tga", ".bmp"}
 
 # Pastas que nao interessam pro editor.
@@ -42,12 +44,12 @@ def humano(n):
     return "%.1f TB" % n
 
 
-def varre(raiz):
+def varre(raiz, tudo=False):
     """(caminho absoluto, caminho relativo) de tudo que interessa em `raiz`."""
     for dirpath, dirnames, arquivos in os.walk(raiz):
         dirnames[:] = [d for d in dirnames if d.lower() not in IGNORAR]
         for a in arquivos:
-            if os.path.splitext(a)[1].lower() not in EXTENSOES:
+            if not tudo and os.path.splitext(a)[1].lower() not in EXTENSOES:
                 continue
             cheio = os.path.join(dirpath, a)
             yield cheio, os.path.relpath(cheio, raiz)
@@ -97,6 +99,10 @@ def main():
                     help="'link' faz hardlink em vez de copiar: instantaneo e nao "
                          "ocupa disco, mas so funciona no mesmo volume e NAO serve "
                          "pra zipar e levar pra outra maquina")
+    ap.add_argument("--tudo", action="store_true",
+                    help="nao filtra por extensao: leva tambem .sbin (terreno), "
+                         "_property.xml, .wep e o resto. Pra uso local, quando "
+                         "voce quer a pasta do mapa inteira num lugar so")
     ap.add_argument("--simular", action="store_true",
                     help="so mostra o que faria")
     a = ap.parse_args()
@@ -115,7 +121,7 @@ def main():
         if not os.path.isdir(raiz):
             print("[aviso] nao achei: %s" % raiz)
             continue
-        for cheio, rel in varre(raiz):
+        for cheio, rel in varre(raiz, a.tudo):
             tarefas.append((cheio, os.path.join(saida, rel)))
 
     for raiz in a.texturas:
@@ -125,7 +131,7 @@ def main():
             continue
         # o pool de texturas vira sempre 'texture_dds' dentro do pacote
         base = os.path.join(saida, "texture_dds")
-        for cheio, rel in varre(raiz):
+        for cheio, rel in varre(raiz, a.tudo):
             tarefas.append((cheio, os.path.join(base, rel)))
 
     if not tarefas:
@@ -134,7 +140,7 @@ def main():
 
     total = sum(os.path.getsize(o) for o, _ in tarefas)
     print("pacote:  %s" % saida)
-    print("modo:    %s" % a.modo)
+    print("modo:    %s%s" % (a.modo, "   (tudo)" if a.tudo else "   (so o que o editor abre)"))
     print("%d arquivos, %s" % (len(tarefas), humano(total)))
     gbins = sum(1 for o, _ in tarefas if o.lower().endswith(".gbin"))
     print("%d .gbin (holes)" % gbins)

@@ -50,8 +50,11 @@ sozinho e a lista já vem cheia — sem editar o `editor.cfg`.
 python bin\tools\montar_pacote.py --mapas "C:\PangYa\data" --texturas "C:\PangYa\gui\data\texture_dds"
 ```
 
-O script copia só o que o editor abre (`.gbin`, `.pet` e texturas), preservando
-a estrutura de pastas:
+O script copia só o que o editor abre (`.gbin`, `.pet` e texturas). Com
+**`--tudo`** ele não filtra nada e leva a pasta do mapa inteira — `.sbin`
+(terreno e colisão, que é o grosso do peso), `_property.xml` (tee, pino e as
+classes de booster) e `.wep` (o projeto do editor da Ntreev). A estrutura de
+pastas é preservada nos dois casos:
 
 ```
 bin\
@@ -62,14 +65,17 @@ bin\
      └─ texture_dds\
 ```
 
-Opções úteis: `--simular` mostra o tamanho antes de escrever, `--modo link` usa
-hardlink em vez de copiar (instantâneo e não ocupa disco, mesmo volume só).
+| opção | |
+|---|---|
+| `--tudo` | não filtra por extensão: a pasta do mapa inteira |
+| `--simular` | só mostra quantos arquivos e quantos MB, sem escrever |
+| `--modo link` | hardlink em vez de cópia: instantâneo e não ocupa disco. Mesmo volume só, e **os dois nomes viram o mesmo arquivo** — pra guardar ou levar pra outra máquina, use a cópia |
+| `--saida PASTA` | monta em outro lugar |
 
-> ⚠️ **Esse pacote não vem no repositório e não deve ser publicado.** Os mapas,
-> modelos e texturas são conteúdo do cliente do PangYa (Ntreev Soft / NCSOFT);
-> redistribuí-los não é coisa que eu possa ajudar a fazer. O que se distribui é
-> o **programa e o script** — cada um monta o pacote a partir da instalação que
-> já tem. O `.gitignore` bloqueia `bin/mapas/` pra isso não subir sem querer.
+> O pacote é montado **da sua instalação, na sua máquina**, e não entra no
+> repositório: são arquivos do cliente do PangYa (Ntreev Soft / NCSOFT). O que
+> se distribui aqui é o programa e o script. O `.gitignore` bloqueia
+> `bin/mapas/` pra ele não subir sem querer.
 
 ### O que você precisa ter
 
